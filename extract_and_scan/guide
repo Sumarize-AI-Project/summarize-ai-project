@@ -1,0 +1,79 @@
+🗂️ CẨM NANG VẬN HÀNH: HỆ THỐNG TRÍCH XUẤT DỮ LIỆU (EXTRACT & SCAN)
+🛠️ PHẦN 0: CÔNG TÁC CHUẨN BỊ (BẮT BUỘC)
+Trước khi nổ máy, máy tính của sếp cần phải có đủ "3 chân kiềng" sau:
+
+Phần mềm Tesseract-OCR (Cỗ máy đọc ảnh):
+
+Tải về: Tesseract Installer cho Windows.
+
+Lưu ý khi cài: Phải tích chọn Vietnamese trong mục Additional language data.
+
+Đường dẫn mặc định: C:\Program Files\Tesseract-OCR\tesseract.exe.
+
+Thư viện Python (Bộ điều khiển):
+
+Mở Terminal trong VS Code và chạy lệnh "sạch" sau:
+
+pip install pytesseract Pillow PyMuPDF tqdm pandas
+
+API Key (Dành cho Bước 3 - Tinh chế):
+
+Cần 1 mã Gemini API Key (Miễn phí từ Google AI Studio) để AI đọc hiểu và tự điền Tên tác giả + Tóm tắt vào sáng mai.
+
+📂 KIẾN TRÚC THƯ MỤC & CÁC THÀNH PHẦN CHÍNH
+1. schema_builder.py (Khuôn đúc Dữ liệu)
+Mục đích: Là "bản thiết kế chuẩn" cho MongoDB.
+
+Chức năng: Nhận dữ liệu thô (tên file, dung lượng, nội dung chữ) và đóng gói thành một Object JSON duy nhất.
+
+Lợi ích: Dù là Nhóm A (AI quét) hay Nhóm B (Code bóc), dữ liệu đầu ra luôn đồng nhất, không bao giờ bị lệch cột.
+
+2. extract_group_B.py (Máy cày Tốc độ cao - B1 & B2)
+Mục đích: Xử lý ~7000 file PDF dạng văn bản số (Digital).
+
+Cách hoạt động: * Dựa vào file classification_results_precision.csv để biết file nào là B1, file nào là B2.
+
+Dùng PyMuPDF để "hút" chữ trực tiếp từ layer văn bản.
+
+Ưu điểm: Cực nhanh (20-30 phút là xong hết sạch Nhóm B).
+
+3. extract_group_A.py (Cỗ xe tăng AI OCR - Nhóm A)
+Mục đích: "Nhai xương" 217 file PDF ảnh Scan lỗi font.
+
+Cơ chế AI: * Chuyển trang PDF thành ảnh chất lượng cao (Zoom 2.0).
+
+Dùng Tesseract-OCR (vừa cài ở Bước 0) để soi từng pixel và gõ lại thành Tiếng Việt.
+
+Đặc điểm: Chạy chậm (5-15 giây/trang). Cần kiên nhẫn, thấy thanh tiến trình nhích là máy vẫn đang làm việc.
+
+4. refine_data.py (Bộ lọc tinh AI - CHIẾN THUẬT CÁCH 3)
+Mục đích: Lấp đầy các khoảng trống mà OCR chưa làm được (Tên tác giả, Tóm tắt).
+
+Cách hoạt động: * Đọc file .jsonl thô vừa tạo ra.
+
+Gửi các đoạn văn bản nghi ngờ (đầu và cuối file) cho Gemini AI.
+
+AI sẽ tự tìm Tên tác giả, đơn vị công tác. Nếu bài báo không có tóm tắt, AI sẽ tự đọc nội dung và viết tóm tắt mới vào trường ai_summary.
+
+5. main_extractor.py (Nhạc trưởng Tổng huy động)
+Mục đích: Một nút bấm duy nhất để chạy toàn bộ quy trình.
+
+Quy trình: 1.  Chạy Nhóm B trước (Lấy số lượng lớn).
+2.  Chạy Nhóm A sau (Quét kỹ thuật cao).
+3.  Gọi refine_data.py để làm đẹp dữ liệu.
+4.  Xuất ra file cuối cùng: final_master_data.jsonl chuẩn bị nạp vào MongoDB.
+
+🚦 HƯỚNG DẪN CHẠY (QUY TRÌNH CHUẨN)
+Bước 1: Nổ máy OCR Nhóm A (Sếp đang làm bước này):
+
+python extract_and_scan/extract_group_A.py
+
+Bước 2: Chạy Nhóm B (Số lượng lớn):
+
+python extract_and_scan/extract_group_B.py
+
+Bước 3 (Sáng mai): Chạy bộ lọc tinh bằng AI:
+
+python extract_and_scan/refine_data.py
+
+💡 Lời khuyên của AI: Sếp đã để máy chạy Nhóm A rồi, giờ hãy cứ để nó thầm lặng làm việc. Thành quả sáng mai sẽ là một kho báu dữ liệu thô cực kỳ chất lượng!
