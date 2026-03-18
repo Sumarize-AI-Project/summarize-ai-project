@@ -1,80 +1,170 @@
 import os
 import json
-import google.generativeai as genai
-from tqdm import tqdm
 import time
+from tqdm import tqdm
+from google import genai
 
-# ==========================================
-# CẤU HÌNH HỆ THỐNG
-# ==========================================
-GEMINI_API_KEY = "AIzaSyBWcVHgEA1jct4tNZq72yz_R56EBoOZfa4" 
-genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel('gemini-1.5-flash')
+# ==============================
+# CONFIG
+# ==============================
+client = genai.Client(
+    api_key=os.getenv("GEMINI_API_KEY")
+)
+
+MODEL = "gemini-2.0-flash"
 
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-INPUT_FILE = os.path.join(CURRENT_DIR, "extracted_group_A.jsonl")
-OUTPUT_FILE = os.path.join(CURRENT_DIR, "refined_group_A.jsonl")
 
-def ask_ai_to_refine(text_preview):
-    """Gửi dữ liệu thô cho AI để tinh lọc metadata và tóm tắt"""
+FILES_TO_PROCESS = [
+    {
+        "input": os.path.join(CURRENT_DIR, "extracted_group_A.jsonl"),
+        "output": os.path.join(CURRENT_DIR, "refined_group_A.jsonl"),
+        "group_name": "Nhóm A"
+    },
+    {
+        "input": os.path.join(CURRENT_DIR, "extracted_group_B.jsonl"),
+        "output": os.path.join(CURRENT_DIR, "refined_group_B.jsonl"),
+        "group_name": "Nhóm B"
+    }
+]
+
+# ==============================
+# AI CALL (API MỚI)
+# ==============================
+def ask_ai(text, retry=3):
+
     prompt = f"""
-    Bạn là một trợ lý khoa học chuyên nghiệp. Tôi sẽ cung cấp dữ liệu thô từ OCR của một bài báo. 
-    Nhiệm vụ của bạn:
-    1. Nhặt ra Tên các tác giả (Authors).
-    2. Nhặt ra Đơn vị công tác (Affiliation).
-    3. Tìm Tóm tắt (Abstract) có sẵn trong bài. Nếu bài KHÔNG CÓ tóm tắt, hãy viết 1 đoạn tóm tắt khoảng 150 chữ dựa trên nội dung.
-    4. Trả về kết quả CHỈ DUY NHẤT ở định dạng JSON như sau:
-    {{
-        "authors": ["Tên 1", "Tên 2"],
-        "affiliation": "Tên cơ quan",
-        "abstract": "Nội dung tóm tắt..."
-    }}
+Return ONLY valid JSON:
 
-    DỮ LIỆU THÔ:
-    {text_preview}
-    """
-    try:
-        response = model.generate_content(prompt)
-        # Làm sạch chuỗi trả về để ép kiểu JSON
-        json_str = response.text.replace('```json', '').replace('```', '').strip()
-        return json.loads(json_str)
-    except Exception as e:
-        print(f"Lỗi AI: {e}")
-        return None
+{{
+"title": "",
+"authors": [],
+"publish_year": null,
+"keywords_author": [],
+"affiliation": "",
+"abstract": ""
+}}
 
-def start_refining():
-    if not os.path.exists(INPUT_FILE):
-        print("❌ Chưa thấy file extracted_group_A.jsonl. Chờ OCR chạy xong đã sếp ơi!")
+TEXT:
+{text}
+"""
+
+    for i in range(retry):
+        try:
+            response = client.models.generate_content(
+                model=MODEL,
+                contents=prompt
+            )
+
+            text = response.text.strip()
+
+            # fix ```json
+            if text.startswith("```"):
+                text = text.split("```")[1]
+
+            return json.loads(text)
+
+        except Exception as e:
+            print(f"⚠️ Retry {i+1}: {e}")
+            time.sleep(2 * (i + 1))
+
+    return None
+
+
+# ==============================
+# CHECK
+# ==============================
+def need_refine(data):
+    m = data.get("metadata", {})
+    c = data.get("content", {})
+
+    return (
+        not m.get("title") or
+        not m.get("authors") or
+        not m.get("publish_year") or
+        not m.get("keywords_author") or
+        not m.get("publisher") or
+        not c.get("ai_summary")
+    )
+
+
+# ==============================
+# PROCESS
+# ==============================
+def process_file(input_path, output_path, name):
+
+    if not os.path.exists(input_path):
+        print(f"❌ Missing: {input_path}")
         return
 
-    print("💎 BẮT ĐẦU QUÁ TRÌNH TINH LỌC DỮ LIỆU BẰNG AI...")
-    
-    with open(INPUT_FILE, 'r', encoding='utf-8') as f_in, \
-         open(OUTPUT_FILE, 'w', encoding='utf-8') as f_out:
-        
-        lines = f_in.readlines()
-        for line in tqdm(lines, desc="Tinh lọc"):
-            data = json.loads(line)
-            
-            # Chỉ lấy 1500 chữ đầu và 1500 chữ cuối để tiết kiệm API và chính xác hơn
-            full_content = data['content']['full_text']
-            preview = full_content[:1500] + "\n[...]\n" + full_content[-1500:]
-            
-            # Gọi AI xử lý
-            refined = ask_ai_to_refine(preview)
-            
-            if refined:
-                # Cập nhật vào Schematic chuẩn của sếp
-                data['metadata']['authors'] = refined.get('authors', [])
-                data['metadata']['publisher'] = refined.get('affiliation', "")
-                data['content']['ai_summary'] = refined.get('abstract', "")
-                data['nlp_data']['extracted_text'] = True
-                data['system']['status'] = "refined"
-            
-            f_out.write(json.dumps(data, ensure_ascii=False) + "\n")
-            time.sleep(4) # Tránh bị giới hạn tốc độ API (Rate limit)
+    print(f"\n💎 {name}")
 
-    print(f"🎉 XONG! Dữ liệu tinh khiết đã nằm tại: {OUTPUT_FILE}")
+    processed = 0
+    if os.path.exists(output_path):
+        with open(output_path, "r", encoding="utf-8") as f:
+            processed = sum(1 for _ in f)
+        print(f"⏩ Resume: {processed}")
+
+    with open(input_path, "r", encoding="utf-8") as f:
+        lines = f.readlines()
+
+    with open(output_path, "a", encoding="utf-8") as fout:
+
+        for i, line in enumerate(tqdm(lines)):
+
+            if i < processed:
+                continue
+
+            try:
+                data = json.loads(line)
+            except:
+                continue
+
+            data.setdefault("metadata", {})
+            data.setdefault("content", {})
+            data.setdefault("system", {})
+            data.setdefault("nlp_data", {})
+
+            if not need_refine(data):
+                data["system"]["status"] = "skipped"
+                fout.write(json.dumps(data, ensure_ascii=False) + "\n")
+                continue
+
+            text = data["content"].get("full_text", "")
+
+            if len(text) > 3000:
+                text = text[:1500] + "\n...\n" + text[-1500:]
+
+            refined = ask_ai(text)
+
+            if refined:
+                data["metadata"]["title"] = refined.get("title", "")
+                data["metadata"]["authors"] = refined.get("authors", [])
+                data["metadata"]["publish_year"] = refined.get("publish_year", None)
+                data["metadata"]["keywords_author"] = refined.get("keywords_author", [])
+                data["metadata"]["publisher"] = refined.get("affiliation", "")
+                data["content"]["ai_summary"] = refined.get("abstract", "")
+                data["system"]["status"] = "refined"
+            else:
+                data["system"]["status"] = "failed"
+
+            fout.write(json.dumps(data, ensure_ascii=False) + "\n")
+            fout.flush()
+
+            time.sleep(0.8)
+
+    print(f"✅ DONE {name}")
+
+
+# ==============================
+# MAIN
+# ==============================
+def main():
+    for f in FILES_TO_PROCESS:
+        process_file(f["input"], f["output"], f["group_name"])
+
+    print("\n🏆 ALL DONE")
+
 
 if __name__ == "__main__":
-    start_refining()
+    main()
