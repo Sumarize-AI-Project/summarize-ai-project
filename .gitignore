@@ -40,9 +40,10 @@ Thumbs.db
 .idea/
 
 # --- Large local AI models (do not push) ---
-*.safetensors
-backend/qwen_offline/
-backend/models/
+backend/backend/models/
+en_offline/
+
+ckend/models/
 backend/backend/models/
 *.bin
 *.safetensors
