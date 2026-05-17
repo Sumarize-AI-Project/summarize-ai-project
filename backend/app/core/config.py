@@ -113,6 +113,7 @@ class Settings(BaseSettings):
     pdf_preserve_layout: bool = True
     pdf_max_pages: int | None = Field(default=None, ge=1, le=5000)
     admin_emails: str | None = None
+    super_admin_emails: str | None = None
 
     model_config = SettingsConfigDict(
         env_file=str(ENV_FILE),
