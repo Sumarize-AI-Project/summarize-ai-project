@@ -64,3 +64,6 @@ summarize-ai-cloned-data-part/
 
 # Bỏ qua các file tài liệu người dùng tải lên tạm thời
 backend/temp_uploads/
+
+
+.vscode/
