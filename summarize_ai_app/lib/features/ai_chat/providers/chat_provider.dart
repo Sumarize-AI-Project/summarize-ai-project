@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../data/models/chat_message.dart';
 import '../../../../core/services/api_service.dart';
 import '../../pdf_summary/providers/summary_provider.dart';
+import '../../history/providers/history_provider.dart';
 
 /// Provider for the AI chat feature state.
 final chatProvider =
@@ -31,6 +32,36 @@ class ChatNotifier extends StateNotifier<ChatState> {
     state = state.copyWith(messages: messages);
   }
 
+  /// Restores chat messages for a saved session.
+  void restoreChat(List<ChatMessage> messages) {
+    if (messages.isEmpty) {
+      _loadInitialMessages();
+    } else {
+      state = state.copyWith(
+        messages: messages,
+        isAiTyping: false,
+        errorMessage: null,
+      );
+      _messageCounter = messages.length + 1;
+    }
+  }
+
+  void _updateHistoryChat() {
+    final sessionId = _ref.read(summaryProvider).sessionId;
+    if (sessionId == null || sessionId.isEmpty) return;
+
+    final historyState = _ref.read(historyProvider);
+    final existingSessionIndex =
+        historyState.allSessions.indexWhere((s) => s.id == sessionId);
+    if (existingSessionIndex != -1) {
+      final existingSession = historyState.allSessions[existingSessionIndex];
+      final updatedSession = existingSession.copyWith(
+        chatMessages: state.messages,
+      );
+      _ref.read(historyProvider.notifier).saveOrUpdateSession(updatedSession);
+    }
+  }
+
   /// Sends a user message and triggers an AI response.
   Future<void> sendMessage(String content) async {
     if (content.trim().isEmpty) return;
@@ -50,6 +81,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
       isAiTyping: true,
       errorMessage: null,
     );
+    _updateHistoryChat();
 
     if (sessionId == null || sessionId.isEmpty) {
       // Báo lỗi ngay nếu chưa có file
@@ -63,6 +95,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
         messages: [...state.messages, aiMsg],
         isAiTyping: false,
       );
+      _updateHistoryChat();
       return;
     }
 
@@ -84,6 +117,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
         messages: [...state.messages, aiMsg],
         isAiTyping: false,
       );
+      _updateHistoryChat();
     } catch (e) {
       state = state.copyWith(
         isAiTyping: false,

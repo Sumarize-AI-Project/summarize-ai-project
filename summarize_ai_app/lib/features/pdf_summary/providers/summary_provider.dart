@@ -3,17 +3,21 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
 import '../data/models/summary_state.dart';
 import '../../../../core/services/api_service.dart';
+import '../../history/providers/history_provider.dart';
+import '../../history/data/models/history_item.dart';
 
 /// Provider for the summary feature state.
 final summaryProvider = StateNotifierProvider<SummaryNotifier, SummaryState>((
   ref,
 ) {
-  return SummaryNotifier();
+  return SummaryNotifier(ref);
 });
 
 /// Manages the full upload → process → result pipeline.
 class SummaryNotifier extends StateNotifier<SummaryState> {
-  SummaryNotifier() : super(const SummaryState());
+  final Ref _ref;
+
+  SummaryNotifier(this._ref) : super(const SummaryState());
 
   Timer? _progressTimer;
 
@@ -37,6 +41,22 @@ class SummaryNotifier extends StateNotifier<SummaryState> {
   void clearFile() {
     _progressTimer?.cancel();
     state = const SummaryState();
+  }
+
+  /// Restores a saved work session from local history.
+  void restoreSession(SessionItem session) {
+    _progressTimer?.cancel();
+    state = SummaryState(
+      status: SummaryStatus.completed,
+      fileName: session.pdfName,
+      fileSizeBytes: null,
+      uploadProgress: 1.0,
+      summaryMarkdown: session.summaryMarkdown,
+      errorMessage: null,
+      wordCount: session.summaryWordCount ?? 500,
+      platformFile: null,
+      sessionId: session.id,
+    );
   }
 
   /// Starts the full summarization pipeline:
@@ -77,6 +97,21 @@ class SummaryNotifier extends StateNotifier<SummaryState> {
         summaryMarkdown: result['summary'] as String?,
         sessionId: result['session_id'] as String?,
       );
+
+      // Save new summary to local history
+      final sessionId = result['session_id'] as String?;
+      if (sessionId != null) {
+        final session = SessionItem(
+          id: sessionId,
+          pdfName: state.fileName ?? 'Unnamed PDF',
+          pdfSize: state.fileSizeFormatted,
+          createdAt: DateTime.now(),
+          summaryMarkdown: result['summary'] as String?,
+          summaryWordCount: state.wordCount,
+          chatMessages: const [],
+        );
+        _ref.read(historyProvider.notifier).saveOrUpdateSession(session);
+      }
     } catch (e) {
       _progressTimer?.cancel();
       state = state.copyWith(
@@ -105,6 +140,21 @@ class SummaryNotifier extends StateNotifier<SummaryState> {
         summaryMarkdown: result['summary'] as String?,
         sessionId: result['session_id'] as String?,
       );
+
+      // Save updated summary to local history
+      final sessionId = result['session_id'] as String?;
+      if (sessionId != null) {
+        final session = SessionItem(
+          id: sessionId,
+          pdfName: state.fileName ?? 'Unnamed PDF',
+          pdfSize: state.fileSizeFormatted,
+          createdAt: DateTime.now(),
+          summaryMarkdown: result['summary'] as String?,
+          summaryWordCount: state.wordCount,
+          chatMessages: const [],
+        );
+        _ref.read(historyProvider.notifier).saveOrUpdateSession(session);
+      }
     } catch (e) {
       state = state.copyWith(
         status: SummaryStatus.error,

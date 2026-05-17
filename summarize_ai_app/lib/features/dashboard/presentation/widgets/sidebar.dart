@@ -257,18 +257,17 @@ class Sidebar extends ConsumerWidget {
   }
 
   Widget _buildUserProfile(AuthState authState) {
-    final name = authState.user?.name ?? 'User';
     final email = authState.user?.email ?? '';
 
     if (isCollapsed) {
       return Center(
         child: Tooltip(
-          message: name,
+          message: email,
           child: CircleAvatar(
             radius: 18,
             backgroundColor: AppColors.primary.withValues(alpha: 0.2),
             child: Text(
-              name.isNotEmpty ? name[0].toUpperCase() : 'U',
+              email.isNotEmpty ? email[0].toUpperCase() : 'U',
               style: AppTextStyles.labelLarge.copyWith(color: AppColors.primary),
             ),
           ),
@@ -284,7 +283,7 @@ class Sidebar extends ConsumerWidget {
             radius: 16,
             backgroundColor: AppColors.primary.withValues(alpha: 0.2),
             child: Text(
-              name.isNotEmpty ? name[0].toUpperCase() : 'U',
+              email.isNotEmpty ? email[0].toUpperCase() : 'U',
               style: AppTextStyles.labelMedium
                   .copyWith(color: AppColors.primary),
             ),
@@ -295,11 +294,8 @@ class Sidebar extends ConsumerWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(name,
-                    style: AppTextStyles.labelMedium,
-                    overflow: TextOverflow.ellipsis),
                 Text(email,
-                    style: AppTextStyles.labelSmall,
+                    style: AppTextStyles.labelMedium,
                     overflow: TextOverflow.ellipsis),
               ],
             ),

@@ -5,8 +5,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 
 class ApiService {
-  // Đã cập nhật IP LAN máy tính của bạn (192.168.0.102) để điện thoại thật có thể kết nối được
-  static const String baseUrl = 'http://192.168.0.102:8000/api';
+  static const String baseUrl = 'https://sloppy-daffodil-savor.ngrok-free.dev';
 
   final Dio _dio = Dio(
     BaseOptions(
@@ -43,7 +42,7 @@ class ApiService {
         });
       }
 
-      final response = await _dio.post('/summarize', data: formData);
+      final response = await _dio.post('/api/summarize', data: formData);
       return response.data as Map<String, dynamic>;
     } on DioException catch (e) {
       debugPrint("Lỗi gọi API Summarize: \${e.message}");
@@ -68,7 +67,7 @@ class ApiService {
   }) async {
     try {
       final response = await _dio.post(
-        '/chat',
+        '/api/chat',
         data: {'session_id': sessionId, 'message': message},
       );
       return response.data['reply'] as String;

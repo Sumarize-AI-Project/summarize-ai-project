@@ -10,6 +10,9 @@ import '../widgets/mobile_drawer.dart';
 import '../../../ai_chat/presentation/screens/ai_chat_screen.dart';
 import '../../data/navigation_items.dart';
 
+import '../../../pdf_summary/providers/summary_provider.dart';
+import '../../../ai_chat/providers/chat_provider.dart';
+
 /// Main dashboard shell — responsive layout wrapping all dashboard content.
 ///
 /// - Desktop (≥1200px): Sidebar (260px) | Content | AI Assistant Panel (360px)
@@ -43,6 +46,8 @@ class _DashboardShellState extends ConsumerState<DashboardShell> {
 
   void _onNewSummary() {
     widget.navigationShell.goBranch(1);
+    ref.read(summaryProvider.notifier).clearFile();
+    ref.read(chatProvider.notifier).clearChat();
   }
 
   @override

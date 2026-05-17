@@ -1,10 +1,13 @@
+import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../data/models/history_item.dart';
+import '../../auth/providers/auth_provider.dart';
 
-/// Provider for session-based history with filtering and sorting.
+/// Provider for session-based history with filtering, sorting, and local persistence.
 final historyProvider =
     StateNotifierProvider<HistoryNotifier, HistoryState>((ref) {
-  return HistoryNotifier();
+  return HistoryNotifier(ref);
 });
 
 class HistoryState {
@@ -64,102 +67,75 @@ enum HistoryFilter { all, withSummary, withChat, pdfOnly }
 enum HistorySortOrder { newest, oldest }
 
 class HistoryNotifier extends StateNotifier<HistoryState> {
-  HistoryNotifier() : super(const HistoryState()) {
-    _loadMockData();
+  final Ref _ref;
+
+  HistoryNotifier(this._ref) : super(const HistoryState()) {
+    _loadHistory();
+    // Listen to changes in the active user email to automatically reload history
+    _ref.listen<AuthState>(authProvider, (previous, next) {
+      if (previous?.user?.email != next.user?.email) {
+        _loadHistory();
+      }
+    });
   }
 
-  void _loadMockData() {
-    final now = DateTime.now();
-    final sessions = <SessionItem>[
-      SessionItem(
-        id: '1',
-        pdfName: 'Machine Learning Report.pdf',
-        pdfSize: '2.4 MB',
-        createdAt: now.subtract(const Duration(hours: 1)),
-        summaryPreview: 'This document presents a comprehensive analysis of artificial intelligence applications in modern document processing...',
-        summaryWordCount: 450,
-        chatMessageCount: 12,
-      ),
-      SessionItem(
-        id: '2',
-        pdfName: 'Data Mining Textbook.pdf',
-        pdfSize: '15.7 MB',
-        createdAt: now.subtract(const Duration(hours: 5)),
-        summaryPreview: 'An in-depth exploration of data mining techniques including classification, clustering, and association rules...',
-        summaryWordCount: 1200,
-        chatMessageCount: 5,
-      ),
-      SessionItem(
-        id: '3',
-        pdfName: 'Neural Networks Paper.pdf',
-        pdfSize: '4.1 MB',
-        createdAt: now.subtract(const Duration(days: 1)),
-        summaryPreview: 'The paper discusses advanced neural network architectures including CNNs, RNNs, and transformer models...',
-        summaryWordCount: 600,
-        chatMessageCount: 8,
-      ),
-      SessionItem(
-        id: '4',
-        pdfName: 'NLP Research Paper.pdf',
-        pdfSize: '3.8 MB',
-        createdAt: now.subtract(const Duration(days: 2)),
-        summaryPreview: 'A study on natural language processing methods for text summarization and sentiment analysis...',
-        summaryWordCount: 800,
-        chatMessageCount: 0,
-      ),
-      SessionItem(
-        id: '5',
-        pdfName: 'Computer Vision Handbook.pdf',
-        pdfSize: '22.3 MB',
-        createdAt: now.subtract(const Duration(days: 4)),
-        summaryPreview: 'Comprehensive guide to computer vision techniques including image recognition, object detection, and segmentation...',
-        summaryWordCount: 1500,
-        chatMessageCount: 15,
-      ),
-      SessionItem(
-        id: '6',
-        pdfName: 'Reinforcement Learning Guide.pdf',
-        pdfSize: '8.9 MB',
-        createdAt: now.subtract(const Duration(days: 6)),
-        summaryPreview: null, // Not yet summarized
-        chatMessageCount: 0,
-      ),
-      SessionItem(
-        id: '7',
-        pdfName: 'Statistics Fundamentals.pdf',
-        pdfSize: '5.2 MB',
-        createdAt: now.subtract(const Duration(days: 7)),
-        summaryPreview: 'Essential statistical concepts including probability distributions, hypothesis testing, and regression analysis...',
-        summaryWordCount: 700,
-        chatMessageCount: 3,
-      ),
-      SessionItem(
-        id: '8',
-        pdfName: 'Deep Learning Architectures.pdf',
-        pdfSize: '11.0 MB',
-        createdAt: now.subtract(const Duration(days: 10)),
-        summaryPreview: null, // Not yet summarized
-        chatMessageCount: 2,
-      ),
-      SessionItem(
-        id: '9',
-        pdfName: 'AI Ethics Report.pdf',
-        pdfSize: '1.8 MB',
-        createdAt: now.subtract(const Duration(days: 12)),
-        summaryPreview: 'Discusses the ethical implications of AI including bias, transparency, and accountability in automated systems...',
-        summaryWordCount: 350,
-        chatMessageCount: 0,
-      ),
-      SessionItem(
-        id: '10',
-        pdfName: 'Big Data Analytics.pdf',
-        pdfSize: '18.5 MB',
-        createdAt: now.subtract(const Duration(days: 14)),
-        summaryPreview: null,
-        chatMessageCount: 0,
-      ),
-    ];
-    state = state.copyWith(allSessions: sessions);
+  String get _historyKey {
+    final email = _ref.read(authProvider).user?.email ?? 'anonymous';
+    return 'history_sessions_v1_${email.toLowerCase().replaceAll('.', '_')}';
+  }
+
+  Future<void> _loadHistory() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final jsonStr = prefs.getString(_historyKey);
+      if (jsonStr != null && jsonStr.isNotEmpty) {
+        final List<dynamic> list = json.decode(jsonStr) as List<dynamic>;
+        final sessions = list
+            .map((item) => SessionItem.fromJson(item as Map<String, dynamic>))
+            .toList();
+        state = state.copyWith(allSessions: sessions);
+      } else {
+        state = state.copyWith(allSessions: const []);
+      }
+    } catch (e) {
+      state = state.copyWith(allSessions: const []);
+    }
+  }
+
+  Future<void> _saveHistory(List<SessionItem> sessions) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final jsonStr = json.encode(sessions.map((s) => s.toJson()).toList());
+      await prefs.setString(_historyKey, jsonStr);
+    } catch (e) {
+      // Error handling
+    }
+  }
+
+  /// Saves a session or updates it if it already exists.
+  Future<void> saveOrUpdateSession(SessionItem session) async {
+    final list = List<SessionItem>.from(state.allSessions);
+    final index = list.indexWhere((s) => s.id == session.id);
+    if (index != -1) {
+      list[index] = session;
+    } else {
+      list.insert(0, session);
+    }
+    state = state.copyWith(allSessions: list);
+    await _saveHistory(list);
+  }
+
+  /// Deletes a session by its ID.
+  Future<void> deleteSession(String id) async {
+    final list = state.allSessions.where((s) => s.id != id).toList();
+    state = state.copyWith(allSessions: list);
+    await _saveHistory(list);
+  }
+
+  /// Clears all stored sessions.
+  Future<void> clearAllHistory() async {
+    state = state.copyWith(allSessions: const []);
+    await _saveHistory(const []);
   }
 
   void setFilter(HistoryFilter filter) {

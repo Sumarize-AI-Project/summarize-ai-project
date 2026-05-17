@@ -23,7 +23,6 @@ class MobileDrawer extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final authState = ref.watch(authProvider);
-    final name = authState.user?.name ?? 'User';
     final email = authState.user?.email ?? '';
 
     return Drawer(
@@ -134,7 +133,7 @@ class MobileDrawer extends ConsumerWidget {
                     backgroundColor:
                         AppColors.primary.withValues(alpha: 0.2),
                     child: Text(
-                      name.isNotEmpty ? name[0].toUpperCase() : 'U',
+                      email.isNotEmpty ? email[0].toUpperCase() : 'U',
                       style: AppTextStyles.labelLarge
                           .copyWith(color: AppColors.primary),
                     ),
@@ -145,11 +144,8 @@ class MobileDrawer extends ConsumerWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text(name,
-                            style: AppTextStyles.labelMedium,
-                            overflow: TextOverflow.ellipsis),
                         Text(email,
-                            style: AppTextStyles.labelSmall,
+                            style: AppTextStyles.labelMedium,
                             overflow: TextOverflow.ellipsis),
                       ],
                     ),

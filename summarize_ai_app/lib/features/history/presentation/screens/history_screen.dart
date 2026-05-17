@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:go_router/go_router.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../providers/history_provider.dart';
 import '../../data/models/history_item.dart';
+import '../../../pdf_summary/providers/summary_provider.dart';
+import '../../../ai_chat/providers/chat_provider.dart';
 
 /// History screen — each PDF upload is displayed as a session card
 /// showing the PDF, its summary (if any), and chat activity (if any).
@@ -54,12 +57,12 @@ class HistoryScreen extends ConsumerWidget {
               // ── Session List ────────────────────────────────
               Expanded(
                 child: sessions.isEmpty
-                    ? _buildEmptyState(theme)
+                    ? _buildEmptyState(historyState, theme)
                     : ListView.separated(
                         itemCount: sessions.length,
                         separatorBuilder: (_, _) => const SizedBox(height: 10),
                         itemBuilder: (context, i) =>
-                            _buildSessionCard(sessions[i], i, theme),
+                            _buildSessionCard(context, ref, sessions[i], i, theme),
                       ),
               ),
             ],
@@ -196,8 +199,28 @@ class HistoryScreen extends ConsumerWidget {
   }
 
   /// Session card — shows PDF + summary preview + chat indicator.
-  Widget _buildSessionCard(SessionItem session, int index, ThemeData theme) {
-    return Container(
+  Widget _buildSessionCard(
+    BuildContext context,
+    WidgetRef ref,
+    SessionItem session,
+    int index,
+    ThemeData theme,
+  ) {
+    return Card(
+      margin: EdgeInsets.zero,
+      elevation: 0,
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () {
+          // Restore selected file, summary, sessionId, wordCount
+          ref.read(summaryProvider.notifier).restoreSession(session);
+          // Restore chat messages list
+          ref.read(chatProvider.notifier).restoreChat(session.chatMessages);
+          // Switch to Summary screen (Branch 1)
+          StatefulNavigationShell.of(context).goBranch(1);
+        },
+        borderRadius: BorderRadius.circular(AppConstants.radiusMD),
+        child: Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
             color: theme.colorScheme.surface,
@@ -332,13 +355,18 @@ class HistoryScreen extends ConsumerWidget {
               ],
             ],
           ),
-        )
+        ),
+      ),
+    )
         .animate(delay: Duration(milliseconds: index * 50))
         .fadeIn(duration: 300.ms)
         .slideX(begin: 0.03, end: 0, duration: 300.ms);
   }
 
-  Widget _buildEmptyState(ThemeData theme) {
+  Widget _buildEmptyState(HistoryState state, ThemeData theme) {
+    final bool isSearchOrFilterActive =
+        state.searchQuery.isNotEmpty || state.filter != HistoryFilter.all;
+
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -349,11 +377,20 @@ class HistoryScreen extends ConsumerWidget {
             size: 48,
           ),
           const SizedBox(height: 12),
-          Text('No sessions found', style: theme.textTheme.headlineSmall),
-          const SizedBox(height: 4),
           Text(
-            'Try a different filter or search term.',
-            style: theme.textTheme.bodyMedium,
+            isSearchOrFilterActive ? 'Không tìm thấy kết quả' : 'Lịch sử trống',
+            style: theme.textTheme.headlineSmall,
+          ),
+          const SizedBox(height: 8),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 32),
+            child: Text(
+              isSearchOrFilterActive
+                  ? 'Thử thay đổi từ khóa hoặc bộ lọc khác.'
+                  : 'Hãy bắt đầu bằng cách tải lên và tóm tắt tài liệu đầu tiên của bạn!',
+              style: theme.textTheme.bodyMedium,
+              textAlign: TextAlign.center,
+            ),
           ),
         ],
       ),
