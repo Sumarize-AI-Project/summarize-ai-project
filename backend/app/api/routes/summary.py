@@ -192,9 +192,9 @@ async def generate_summary(
 
     user_id = str(current_user["_id"])
     if not payload.force_regenerate:
-        preferred_summary = await document_service.get_preferred_summary(document_id)
-        if preferred_summary:
-            return await build_summary_result(document_service, summary_record=preferred_summary, user_id=user_id)
+        latest_summary = await document_service.get_latest_summary(document_id)
+        if latest_summary:
+            return await build_summary_result(document_service, summary_record=latest_summary, user_id=user_id)
 
     response = summary_service.generate_summary(
         document_id=document_id,
@@ -207,6 +207,7 @@ async def generate_summary(
         summary=response.summary,
         method=response.method,
         source=response.source,
+        extractive_summary=response.extractive_summary,
     )
     result = await build_summary_result(document_service, summary_record=saved, user_id=user_id)
     if get_settings().debug_summary:

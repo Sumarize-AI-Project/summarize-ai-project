@@ -1056,36 +1056,39 @@ def summarize_pdf_by_textrank(raw_text: str, target_words: int = 500, use_llm_po
             qwen_words = pass1_words or 0
             extractive_error = abs(extractive_words - target_words)
             qwen_error = abs(qwen_words - target_words)
+            qwen_vs_extractive_gap = abs(qwen_words - extractive_words)
+            max_gap_vs_extractive = max(40, int(extractive_words * 0.12))
 
             if isinstance(debug.get("counts"), dict):
                 debug["counts"]["extractive_target_error"] = extractive_error
                 debug["counts"]["qwen_target_error"] = qwen_error
+                debug["counts"]["qwen_vs_extractive_gap"] = qwen_vs_extractive_gap
+                debug["counts"]["qwen_vs_extractive_gap_limit"] = max_gap_vs_extractive
 
-            # Chọn bản gần target_words hơn; Qwen vẫn là single-pass.
-            if qwen_error <= extractive_error:
+            # Ưu tiên Qwen nếu không lệch độ dài quá xa so với TextRank.
+            qwen_length_close_to_extractive = qwen_vs_extractive_gap <= max_gap_vs_extractive
+            severe_bad = bad and any("lẫn ký tự tiếng Trung" in r for r in reasons)
+            if not severe_bad:
                 final = candidate
                 used_llm = True
-                # Nếu có cảnh báo guard thì vẫn trả Qwen nhưng đánh dấu fallback để theo dõi chất lượng.
                 if bad:
                     guard_reasons = reasons
-                    used_fallback = True
+                if not qwen_length_close_to_extractive:
+                    guard_reasons = guard_reasons + [
+                        f"qwen lệch số từ khá xa so với extractive ({qwen_vs_extractive_gap}>{max_gap_vs_extractive}) nhưng vẫn ưu tiên qwen"
+                    ]
             else:
                 final = extractive
                 used_llm = False
-                if bad:
-                    guard_reasons = reasons
-                else:
-                    guard_reasons = [
-                        f"qwen lệch target_words nhiều hơn extractive ({qwen_error}>{extractive_error})"
-                    ]
+                guard_reasons = reasons + ["đã bỏ output Qwen vì lỗi nội dung nghiêm trọng"]
                 used_fallback = True
 
-            # Nếu dính CJK thì cưỡng bức fallback về extractive.
-            if bad and any("lẫn ký tự tiếng Trung" in r for r in reasons):
-                final = extractive
-                used_llm = False
-                used_fallback = True
-                guard_reasons = reasons + ["đã bỏ output Qwen vì lẫn CJK"]
+            # Nếu Qwen pass guard độ dài nhưng lệch target nhiều hơn extractive, vẫn cho phép dùng Qwen
+            # để giữ ưu tiên diễn đạt của LLM theo yêu cầu.
+            if used_llm and qwen_error > extractive_error and isinstance(debug.get("counts"), dict):
+                debug["counts"]["qwen_chosen_despite_higher_target_error"] = True
+
+            # Fallback chỉ khi lỗi nghiêm trọng (CJK/noise nặng), đã xử lý ở nhánh severe_bad.
 
 
             # Single-pass mode: skip proofread pass for latency and stability.

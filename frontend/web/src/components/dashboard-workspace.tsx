@@ -37,11 +37,13 @@ export function DashboardWorkspace({ locale, auth, onBackToLanding, onLogout }: 
   const [activeDocument, setActiveDocument] = useState<DocumentResponse | UploadDocumentResponse | null>(null);
   const [summary, setSummary] = useState("");
   const [summaryMeta, setSummaryMeta] = useState<SummaryResponse | null>(null);
+  const [showExtractiveSummary, setShowExtractiveSummary] = useState(false);
   const [availableSummaries, setAvailableSummaries] = useState<SummaryResponse[]>([]);
   const [chatQuestion, setChatQuestion] = useState("");
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [showChatHistory, setShowChatHistory] = useState(false);
   const [chatMeta, setChatMeta] = useState<ChatResponse | null>(null);
+  const [currentChatTurn, setCurrentChatTurn] = useState<{ question: string; answer: string; method: string; source: string } | null>(null);
   const [historyItems, setHistoryItems] = useState<SummaryHistoryItem[]>([]);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [summaryError, setSummaryError] = useState<string | null>(null);
@@ -97,6 +99,7 @@ export function DashboardWorkspace({ locale, auth, onBackToLanding, onLogout }: 
     setAvailableSummaries([]);
     setChatMessages([]);
     setChatMeta(null);
+    setCurrentChatTurn(null);
     setSummaryError(null);
     setChatError(null);
     setRatingError(null);
@@ -107,6 +110,7 @@ export function DashboardWorkspace({ locale, auth, onBackToLanding, onLogout }: 
     setSummary(nextSummary?.summary ?? "");
     setSummaryMeta(nextSummary);
     setAvailableSummaries(allSummaries);
+    setShowExtractiveSummary(false);
     setRatingError(null);
   };
 
@@ -227,15 +231,23 @@ export function DashboardWorkspace({ locale, auth, onBackToLanding, onLogout }: 
       setSubmittingChat(true);
       setChatError(null);
       const document = await ensureActiveDocument();
+      const question = chatQuestion.trim();
       const response = await apiAuthedRequest<ChatResponse>("/chat", auth.access_token, {
         method: "POST",
         body: JSON.stringify({
           document_id: document.id,
-          question: chatQuestion,
+          question,
           locale,
         }),
       });
       setChatMeta(response);
+      setCurrentChatTurn({
+        question,
+        answer: response.answer,
+        method: response.method,
+        source: response.source,
+      });
+      setChatQuestion("");
       const history = await fetchChatHistory(auth.access_token, document.id);
       setChatMessages(history.items);
     } catch (error) {
@@ -470,9 +482,28 @@ export function DashboardWorkspace({ locale, auth, onBackToLanding, onLogout }: 
                           animate={{ opacity: 1, y: 0 }}
                           exit={{ opacity: 0, y: -10 }}
                           transition={{ duration: 0.26 }}
-                          className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-sm leading-7 text-white/70"
+                          className="space-y-3"
                         >
-                          {summary}
+                          {summaryMeta?.extractive_summary ? (
+                            <div className="flex justify-end">
+                              <button
+                                type="button"
+                                onClick={() => setShowExtractiveSummary((v) => !v)}
+                                className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-white/70 transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/50"
+                              >
+                                {showExtractiveSummary
+                                  ? locale === "vi"
+                                    ? "Xem bản Qwen"
+                                    : "Show Qwen version"
+                                  : locale === "vi"
+                                    ? "Xem bản TextRank"
+                                    : "Show TextRank version"}
+                              </button>
+                            </div>
+                          ) : null}
+                          <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-sm leading-7 text-white/70">
+                            {showExtractiveSummary && summaryMeta?.extractive_summary ? summaryMeta.extractive_summary : summary}
+                          </div>
                         </motion.div>
                       ) : (
                         <motion.div
@@ -574,20 +605,7 @@ export function DashboardWorkspace({ locale, auth, onBackToLanding, onLogout }: 
                         </button>
                       </div>
                       <AnimatePresence mode="wait" initial={false}>
-                        {!showChatHistory ? (
-                          <motion.div
-                            key="chat-hidden"
-                            initial={{ opacity: 0, y: 10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: -10 }}
-                          >
-                            <EmptyState
-                              icon={<History className="h-5 w-5" />}
-                              title={locale === "vi" ? "Lịch sử chat đang ẩn" : "Chat history is hidden"}
-                              description={locale === "vi" ? "Bấm 'Hiện lịch sử chat' để xem các hội thoại trước đó." : "Click 'Show chat history' to view previous conversations."}
-                            />
-                          </motion.div>
-                        ) : submittingChat ? (
+                        {submittingChat ? (
                           <motion.div
                             key="chat-loading"
                             initial={{ opacity: 0, y: 10 }}
@@ -596,7 +614,7 @@ export function DashboardWorkspace({ locale, auth, onBackToLanding, onLogout }: 
                           >
                             <ChatSkeleton />
                           </motion.div>
-                        ) : chatMessages.length ? (
+                        ) : currentChatTurn || showChatHistory || chatMessages.length ? (
                           <motion.div
                             key={activeDocument?.id ?? "chat"}
                             initial={{ opacity: 0, y: 10 }}
@@ -604,21 +622,44 @@ export function DashboardWorkspace({ locale, auth, onBackToLanding, onLogout }: 
                             exit={{ opacity: 0, y: -10 }}
                             className="space-y-3"
                           >
-                            {chatMessages.map((item) => (
-                              <div key={item.id} className="space-y-2">
+                            {currentChatTurn ? (
+                              <div className="space-y-2 rounded-2xl border border-sky-300/20 bg-sky-300/5 p-3">
                                 <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-sm text-white/80">
-                                  <p className="text-xs font-medium text-white/60">{locale === "vi" ? "Hỏi" : "Question"}</p>
-                                  <p className="mt-1 whitespace-pre-wrap leading-6">{item.question}</p>
+                                  <p className="text-xs font-medium text-white/60">{locale === "vi" ? "Hỏi (hiện tại)" : "Question (current)"}</p>
+                                  <p className="mt-1 whitespace-pre-wrap leading-6">{currentChatTurn.question}</p>
                                 </div>
                                 <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-sm text-white/70">
-                                  <p className="text-xs font-medium text-white/60">{locale === "vi" ? "Đáp" : "Answer"}</p>
-                                  <p className="mt-1 whitespace-pre-wrap leading-6">{item.answer}</p>
-                                  <p className="mt-2 text-xs text-white/45">
-                                    {item.method} · {item.source}
-                                  </p>
+                                  <p className="text-xs font-medium text-white/60">{locale === "vi" ? "Đáp (hiện tại)" : "Answer (current)"}</p>
+                                  <p className="mt-1 whitespace-pre-wrap leading-6">{currentChatTurn.answer}</p>
                                 </div>
                               </div>
-                            ))}
+                            ) : null}
+
+                            {showChatHistory ? (
+                              chatMessages.length ? (
+                                chatMessages.map((item) => (
+                                  <div key={item.id} className="space-y-2">
+                                    <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-sm text-white/80">
+                                      <p className="text-xs font-medium text-white/60">{locale === "vi" ? "Hỏi" : "Question"}</p>
+                                      <p className="mt-1 whitespace-pre-wrap leading-6">{item.question}</p>
+                                    </div>
+                                    <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-sm text-white/70">
+                                      <p className="text-xs font-medium text-white/60">{locale === "vi" ? "Đáp" : "Answer"}</p>
+                                      <p className="mt-1 whitespace-pre-wrap leading-6">{item.answer}</p>
+                                      <p className="mt-2 text-xs text-white/45">
+                                        {item.method} · {item.source}
+                                      </p>
+                                    </div>
+                                  </div>
+                                ))
+                              ) : (
+                                <EmptyState
+                                  icon={<History className="h-5 w-5" />}
+                                  title={locale === "vi" ? "Chưa có lịch sử chat cũ" : "No prior chat history"}
+                                  description={locale === "vi" ? "Lượt chat hiện tại vẫn hiển thị ở trên, chưa có lượt nào cũ hơn." : "Your current turn is shown above, and there are no older turns yet."}
+                                />
+                              )
+                            ) : null}
                           </motion.div>
                         ) : (
                           <motion.div
@@ -651,11 +692,6 @@ export function DashboardWorkspace({ locale, auth, onBackToLanding, onLogout }: 
                           {submittingChat || creatingDocument ? loadingLabel : submitLabel}
                         </button>
                       </div>
-                      {chatMeta ? (
-                        <p className="text-xs text-white/45">
-                          {chatMeta.method} · {chatMeta.source}
-                        </p>
-                      ) : null}
                       {chatError ? <ErrorCard message={chatError} /> : null}
                     </div>
                   </Panel>
@@ -773,3 +809,5 @@ function ChatSkeleton() {
     </div>
   );
 }
+
+/* duplicate helper block removed */

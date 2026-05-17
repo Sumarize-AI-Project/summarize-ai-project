@@ -90,6 +90,7 @@ export type SummaryResponse = {
   source: string;
   language: "vi" | "en";
   summary: string;
+  extractive_summary?: string | null;
   word_count: number;
   method: string;
   rating_average: number;
@@ -177,13 +178,30 @@ export type AuthResponse = {
   };
 };
 
+export type NamedCount = { name: string; count: number };
+
 export type AdminKpisResponse = {
-  total_users: number;
-  verified_users: number;
-  total_documents: number;
-  total_summaries: number;
-  summaries_today: number;
-  summaries_7d: number;
+  users: {
+    total: number;
+    verified: number;
+    verification_rate: number;
+  };
+  documents: {
+    total: number;
+    pdf: number;
+    text: number;
+    pdf_ratio: number;
+    extraction_methods: NamedCount[];
+  };
+  summaries: {
+    total: number;
+    today: number;
+    last_7d: number;
+    rated: number;
+    rated_ratio: number;
+    average_rating: number;
+    methods: NamedCount[];
+  };
 };
 
 export type AdminSeriesPoint = {
@@ -191,10 +209,50 @@ export type AdminSeriesPoint = {
   count: number;
 };
 
+export type AdminRatingSeriesPoint = {
+  date: string;
+  average_rating: number;
+};
+
 export type AdminSeriesResponse = {
   users: AdminSeriesPoint[];
+  verified_users: AdminSeriesPoint[];
+  documents: AdminSeriesPoint[];
   summaries: AdminSeriesPoint[];
+  average_rating: AdminRatingSeriesPoint[];
+  document_sources: NamedCount[];
 };
+
+export type SuperAdminInsightsResponse = {
+  top_users_by_documents: { user_id: string | null; count: number }[];
+  low_rated_summaries: {
+    id: string;
+    document_id: string | null;
+    method: string;
+    rating_average?: number | null;
+    rating_count?: number | null;
+    created_at: string;
+  }[];
+  anomalies: {
+    orphan_summaries: number;
+  };
+};
+
+export type SuperAdminUserDetailResponse = {
+  user: {
+    id: string;
+    email: string;
+    full_name: string | null;
+    is_verified: boolean;
+    created_at: string;
+  };
+  stats: {
+    total_documents: number;
+    total_summaries: number;
+  };
+};
+
+export type AdminMeResponse = { ok: true; role: "admin" | "super_admin" };
 
 export type AdminRecentUser = {
   id: string;
@@ -241,6 +299,30 @@ export async function fetchAdminRecent(token: string, limit = 10): Promise<Admin
   return apiAuthedRequest<AdminRecentResponse>(`/admin/recent?limit=${limit}`, token);
 }
 
-export async function fetchAdminMe(token: string): Promise<{ ok: true }> {
-  return apiAuthedRequest<{ ok: true }>("/admin/me", token);
+export async function fetchAdminMe(token: string): Promise<AdminMeResponse> {
+  return apiAuthedRequest<AdminMeResponse>("/admin/me", token);
+}
+
+export async function fetchSuperAdminMe(token: string): Promise<AdminMeResponse> {
+  return apiAuthedRequest<AdminMeResponse>("/admin/super/me", token);
+}
+
+export async function fetchSuperAdminKpis(token: string): Promise<AdminKpisResponse> {
+  return apiAuthedRequest<AdminKpisResponse>("/admin/super/kpis", token);
+}
+
+export async function fetchSuperAdminSeries(token: string, days = 30): Promise<AdminSeriesResponse> {
+  return apiAuthedRequest<AdminSeriesResponse>(`/admin/super/series?days=${days}`, token);
+}
+
+export async function fetchSuperAdminRecent(token: string, limit = 20): Promise<AdminRecentResponse> {
+  return apiAuthedRequest<AdminRecentResponse>(`/admin/super/recent?limit=${limit}`, token);
+}
+
+export async function fetchSuperAdminInsights(token: string, days = 30): Promise<SuperAdminInsightsResponse> {
+  return apiAuthedRequest<SuperAdminInsightsResponse>(`/admin/super/insights?days=${days}`, token);
+}
+
+export async function fetchSuperAdminUserDetail(token: string, userId: string): Promise<SuperAdminUserDetailResponse> {
+  return apiAuthedRequest<SuperAdminUserDetailResponse>(`/admin/super/users/${encodeURIComponent(userId)}`, token);
 }

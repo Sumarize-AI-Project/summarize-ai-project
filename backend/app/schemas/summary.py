@@ -42,6 +42,7 @@ class SummaryResponse(BaseModel):
     source: str
     language: Literal["vi", "en"]
     summary: str
+    extractive_summary: str | None = None
     word_count: int = 0
     method: str
     debug: dict | None = None

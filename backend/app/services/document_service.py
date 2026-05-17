@@ -74,13 +74,16 @@ class DocumentService:
             sort=[("created_at", -1)],
         )
 
-    async def save_summary(self, *, document_id: str, summary: str, method: str, source: str) -> dict[str, Any]:
+    async def save_summary(self, *, document_id: str, summary: str, method: str, source: str, extractive_summary: str | None = None) -> dict[str, Any]:
         latest = await self.get_latest_summary(document_id)
         if latest and latest.get("summary") == summary and latest.get("method") == method and latest.get("source") == source:
             return latest
 
         record = SummaryRecord(document_id=document_id, summary=summary, method=method, source=source)
-        result = await self.summaries.insert_one(record.to_mongo())
+        payload = record.to_mongo()
+        if extractive_summary:
+            payload["extractive_summary"] = extractive_summary
+        result = await self.summaries.insert_one(payload)
         return await self.summaries.find_one({"_id": result.inserted_id})
 
     async def get_summary(self, summary_id: str) -> dict[str, Any] | None:
@@ -175,6 +178,7 @@ class DocumentService:
             "source": summary["source"],
             "language": summary.get("language", "vi"),
             "summary": text,
+            "extractive_summary": summary.get("extractive_summary"),
             "word_count": len(text.split()),
             "method": summary["method"],
             "rating_average": float(summary.get("rating_average", 0.0)),

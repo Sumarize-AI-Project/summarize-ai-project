@@ -11,6 +11,7 @@ class GeneratedSummary:
     language: str
     summary: str
     method: str
+    extractive_summary: str | None = None
     debug: dict | None = None
     guard_reasons: list[str] | None = None
     used_llm: bool | None = None
@@ -43,6 +44,16 @@ class SummaryService:
         else:
             method = "reference-textrank-extractive"
 
+        extractive_summary = result.extractive
+        if extractive_summary.strip() == result.final.strip():
+            compact_selected = [
+                item.get("text", "")
+                for item in result.selected[: max(3, min(6, len(result.selected) // 2 or 3))]
+                if item.get("text")
+            ]
+            if compact_selected:
+                extractive_summary = " ".join(compact_selected)
+
         debug = result.debug if settings.debug_summary else None
 
         return GeneratedSummary(
@@ -51,6 +62,7 @@ class SummaryService:
             language=language,
             summary=result.final,
             method=method,
+            extractive_summary=extractive_summary,
             debug=debug,
             guard_reasons=result.guard_reasons,
             used_llm=result.used_llm,
